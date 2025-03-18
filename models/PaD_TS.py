@@ -1,8 +1,10 @@
+import pdb
 import torch
 import torch.nn as nn
 import numpy as np
 import math
 from timm.models.vision_transformer import Attention, Mlp
+from utils.engine.builder import MODEL_REGISTRY
 
 
 def modulate(x, shift, scale):
@@ -61,6 +63,8 @@ class LearnablePositionalEncoding(nn.Module):
     """
 
     def __init__(self, d_model, dropout=0.1, max_len=1024):
+        # d_model = hidden_size
+        # max_len = sequence_length
         super(LearnablePositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
         # Each position gets its own embedding
@@ -186,6 +190,7 @@ class Decoder(nn.Module):
     def forward(self, x, t):
         identity = x
         toreturn = torch.zeros_like(x)
+        # (batch_size, hidden_size)
         c = self.diffusion_step_emb(t)
         for index in range(len(self.encoder_blocks)):
             x = self.encoder_blocks[index](x, c)
@@ -220,6 +225,7 @@ class TimeSeries2EmbLinear(nn.Module):
         self.pos_emb = LearnablePositionalEncoding(
             d_model=hidden_size, max_len=sequence_length
         )
+        # (batch_size, window, feature_size)
         if dim2emb == "time":
             self.processing = nn.Sequential(
                 nn.Linear(feature_size, hidden_size), nn.Dropout(dropout)
@@ -234,70 +240,82 @@ class TimeSeries2EmbLinear(nn.Module):
             x = x.permute(0, 2, 1)
 
         if self.dim2emb == "time":
-            x = self.processing(x)
+            x = self.processing(x)  # feature_size -> hidden_size
             return self.pos_emb(x)
         return self.processing(x.permute(0, 2, 1))
 
 
+@MODEL_REGISTRY.register()
 class PaD_TS(nn.Module):
-    def __init__(
-        self,
-        hidden_size=512,
-        num_heads=4,
-        n_encoder=2,
-        n_decoder=2,
-        feature_last=True,
-        mlp_ratio=4.0,
-        dropout=0,
-        input_shape=(24, 6),
-    ):
+    def __init__(self, cfg):
         super().__init__()
+
+        self.hidden_size = cfg.MODEL.PAD_TS.HIDDEN_SIZE
+        self.feature_last = cfg.MODEL.PAD_TS.FEATURE_LAST
+        self.input_shape = (cfg.DATASET.WINDOW, cfg.DATASET.DIM)
+        self.dropout = cfg.MODEL.PAD_TS.DROPOUT
+        self.num_heads = cfg.MODEL.PAD_TS.NUM_HEADS
+        self.n_encoder = cfg.MODEL.PAD_TS.N_ENCODER
+        self.n_decoder = cfg.MODEL.PAD_TS.N_DECODER
+        self.mlp_ratio = cfg.MODEL.PAD_TS.MLP_RATIO
+
         self.time2emb = TimeSeries2EmbLinear(
-            hidden_size=hidden_size,
-            feature_last=feature_last,
-            shape=input_shape,
+            hidden_size=self.hidden_size,
+            feature_last=self.feature_last,
+            shape=self.input_shape,
             dim2emb="time",
-            dropout=dropout,
+            dropout=self.dropout,
         )
         self.feature2emb = TimeSeries2EmbLinear(
-            hidden_size=hidden_size,
-            feature_last=feature_last,
-            shape=input_shape,
+            hidden_size=self.hidden_size,
+            feature_last=self.feature_last,
+            shape=self.input_shape,
             dim2emb="feature",
-            dropout=dropout,
+            dropout=self.dropout,
         )
-
         self.time_encoder = Encoder(
-            hidden_size=hidden_size,
-            num_heads=num_heads,
-            n_layers=n_encoder,
-            mlp_ratio=mlp_ratio,
+            hidden_size=self.hidden_size,
+            num_heads=self.num_heads,
+            n_layers=self.n_encoder,
+            mlp_ratio=self.mlp_ratio,
         )
         self.feature_encoder = Encoder(
-            hidden_size=hidden_size,
-            num_heads=num_heads,
-            n_layers=n_encoder,
-            mlp_ratio=mlp_ratio,
+            hidden_size=self.hidden_size,
+            num_heads=self.num_heads,
+            n_layers=self.n_encoder,
+            mlp_ratio=self.mlp_ratio,
         )
 
         self.time_blocks = Decoder(
-            hidden_size=hidden_size, num_heads=num_heads, n_layers=n_decoder
+            hidden_size=self.hidden_size,
+            num_heads=self.num_heads,
+            n_layers=self.n_decoder,
         )
         self.feature_blocks = Decoder(
-            hidden_size=hidden_size, num_heads=num_heads, n_layers=n_decoder
+            hidden_size=self.hidden_size,
+            num_heads=self.num_heads,
+            n_layers=self.n_decoder,
         )
 
-        self.fc_time = nn.Linear(hidden_size, input_shape[1])
-        self.fc_feature = nn.Linear(hidden_size, input_shape[0])
+        self.fc_time = nn.Linear(self.hidden_size, self.input_shape[1])
+        self.fc_feature = nn.Linear(self.hidden_size, self.input_shape[0])
 
     def forward(self, x, t):
-        x_time = self.time2emb(x)
+        # x: (batch_size, window, feature_size)
+
+        x_time = self.time2emb(x)  # (64, 24, 128)
+        # Encoder
         x_time = self.time_encoder(x_time)
+        # DiT
         x_time = self.time_blocks(x_time, t)
+        # Dense (hidden_size -> feature_size)
         x_time = self.fc_time(x_time)
 
-        x_feature = self.feature2emb(x)
+        x_feature = self.feature2emb(x)  # (64, 6, 128)
+        # Encoder
         x_feature = self.feature_encoder(x_feature)
+        # DiT
         x_feature = self.feature_blocks(x_feature, t)
+        # Dense
         x_feature = self.fc_feature(x_feature)
         return x_feature.permute(0, 2, 1) + x_time

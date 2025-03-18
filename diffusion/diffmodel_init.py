@@ -1,15 +1,10 @@
-
-
 import argparse
 import inspect
 import numpy as np
 import torch as th
+import diffusion.gaussian_diffusion_loss as gd
+from .respace import space_timesteps, SpacedDiffusion
 
-import gaussian_diffusion_loss as gd
-from respace import space_timesteps, SpacedDiffusion
-
-
-        
 
 def diffusion_defaults():
     """
@@ -26,7 +21,7 @@ def diffusion_defaults():
         rescale_timesteps=True,
         rescale_learned_sigmas=True,
     )
-    
+
 
 def create_gaussian_diffusion(
     *,
@@ -34,17 +29,17 @@ def create_gaussian_diffusion(
     learn_sigma=False,
     sigma_small=False,
     noise_schedule="linear",
-    loss='MSE',
+    loss="MSE",
     predict_xstart=False,
     rescale_timesteps=False,
     timestep_respacing="",
 ):
     betas = gd.get_named_beta_schedule(noise_schedule, diffusion_steps)
-    assert loss in ['MSE', 'MSE_MMD', 'MSE_CORR']
-    
-    if loss == 'MSE_MMD':
+    assert loss in ["MSE", "MSE_MMD", "MSE_CORR"]
+
+    if loss == "MSE_MMD":
         loss_type = gd.LossType.MSE_MMD
-    elif loss == 'MSE_CORR':
+    elif loss == "MSE_CORR":
         loss_type = gd.LossType.MSE_CORR
     else:
         loss_type = gd.LossType.MSE
@@ -68,4 +63,3 @@ def create_gaussian_diffusion(
         loss_type=loss_type,
         rescale_timesteps=rescale_timesteps,
     )
-

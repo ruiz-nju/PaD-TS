@@ -1,0 +1,7 @@
+DATASET:
+  NAME: "mujoco"
+  PROPORTION: 1.0
+  SAVE2NPY: True
+  NEG_ONE_TO_ONE: True
+  DIM: 14
+  NUM: 10000

@@ -12,7 +12,7 @@ def create_named_schedule_sampler(name, diffusion):
     """
     if name == "uniform":
         return UniformSampler(diffusion)
-    elif name == 'batch_same':
+    elif name == "batch_same":
         return Batch_Same_Sampler(diffusion)
     else:
         raise NotImplementedError(f"unknown schedule sampler: {name}")
@@ -63,16 +63,16 @@ class UniformSampler(ScheduleSampler):
 
     def weights(self):
         return self._weights
-    
 
-class Batch_Same_Sampler():
+
+class Batch_Same_Sampler:
     def __init__(self, diffusion):
         self.diffusion = diffusion
         self._weights = np.ones([diffusion.num_timesteps])
 
     def weights(self):
         return self._weights
-    
+
     def sample(self, batch_size, device):
         w = self.weights()
         p = w / np.sum(w)

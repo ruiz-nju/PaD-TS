@@ -1,8 +1,7 @@
 import numpy as np
 import torch as th
 
-import gaussian_diffusion_loss as gd
-
+import diffusion.gaussian_diffusion_loss as gd
 
 
 def space_timesteps(num_timesteps, section_counts):

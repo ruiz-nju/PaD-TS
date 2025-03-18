@@ -26,7 +26,9 @@ $ conda activate PaD-TS
 ```
 Running experiment
 ```bash
-$ python run.py -d {name} >& results/{name}.txt
+$ sh scripts/PaD_TS/main.sh energy default 24 1 
+$ sh scripts/PaD_TS/main.sh stock default 24 1
+$ sh scripts/PaD_TS/main.sh sine default 24 1
 ```
 
 ## Results
