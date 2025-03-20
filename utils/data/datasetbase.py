@@ -9,9 +9,62 @@ import numpy as np
 import pandas as pd
 from scipy import io
 from utils.tools import unnormalize_to_zero_to_one, normalize_to_neg_one_to_one
+import numpy as np
 
 from sklearn.preprocessing import MinMaxScaler
 from torch.utils.data import Dataset
+from transformers import BertTokenizer, BertModel
+
+
+class MM_TS_Dataset:
+    """
+     Multi-Modal Time-Series Dataset
+    -------------------------------------------------
+    | Date | Dim_0 | Dim_1 | ... | Dim_{n-1} | Text |
+    -------------------------------------------------
+
+    dataset = MM_TS_Dataset(cfg)
+    train = dataset.train
+
+    train["numerical"].shape  # (group, window, dim)
+    type(train["numerical"])  # numpy.ndarray
+
+    type(train["text"])  # list (group * window)
+    """
+
+    def __init__(self, cfg):
+        super().__init__()
+        self.proportion = cfg.DATASET.PROPORTION
+        file = os.path.join(cfg.DATASET.ROOT, cfg.DATASET.NAME + ".csv")
+        if not os.path.exists(file):
+            raise FileNotFoundError(f"File not found: {file}")
+        df = pd.read_csv(file)
+        self.group = len(df) - cfg.DATASET.WINDOW + 1
+        if self.group <= 0:
+            raise ValueError("The window size is too large.")
+        self.window = cfg.DATASET.WINDOW
+        self.dim = cfg.DATASET.DIM
+
+        # 分割数据并转换为字典形式，train 和 test 中每个数据窗口的形状为 (group, window, dim)
+        self.train, self.test = self.split_data(df, self.proportion)
+
+    def split_data(self, df, proportion):
+        split_index = int(len(df) * proportion)
+        train_df = df.iloc[:split_index].reset_index(drop=True)
+        test_df = df.iloc[split_index:].reset_index(drop=True)
+        return self.dataframe_to_windows(
+            train_df, self.window
+        ), self.dataframe_to_windows(test_df, self.window)
+
+    def dataframe_to_windows(self, df, window):
+        # 数值数据转换为 numpy 数组，shape: (n, d)
+        numerical = df.iloc[:, 1:-1].to_numpy()
+        text = df.iloc[:, -1].tolist()
+        numerical_windows = np.array(
+            [numerical[i : i + window] for i in range(self.group)]
+        )
+        text_windows = [text[i : i + window] for i in range(self.group)]
+        return {"numerical": numerical_windows, "text": text_windows}
 
 
 class CustomDataset(Dataset):
